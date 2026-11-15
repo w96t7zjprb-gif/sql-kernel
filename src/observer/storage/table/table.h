@@ -94,7 +94,7 @@ public:
   RC get_record(const RID &rid, Record &record);
 
   // TODO refactor
-  RC create_index(Trx *trx, const FieldMeta *field_meta, const char *index_name);
+  RC create_index(Trx *trx, const FieldMeta *field_meta, const char *index_name, bool unique = false);
 
   RC get_record_scanner(RecordScanner *&scanner, Trx *trx, ReadWriteMode mode);
 
@@ -120,6 +120,11 @@ public:
   LobFileHandler *lob_handler() const { return lob_handler_; }
 
   RC sync();
+
+  /**
+   * @brief 删除表相关的所有磁盘资源（数据文件、元数据文件、索引文件）
+   */
+  RC drop();
 
 private:
   RC set_value_to_record(char *record_data, const Value &value, const FieldMeta *field);

@@ -41,6 +41,10 @@ See the Mulan PSL v2 for more details. */
 #include "sql/operator/group_by_physical_operator.h"
 #include "sql/operator/hash_group_by_physical_operator.h"
 #include "sql/operator/scalar_group_by_physical_operator.h"
+#include "sql/operator/order_by_logical_operator.h"
+#include "sql/operator/order_by_physical_operator.h"
+#include "sql/operator/update_logical_operator.h"
+#include "sql/operator/update_physical_operator.h"
 #include "sql/operator/table_scan_vec_physical_operator.h"
 #include "sql/optimizer/physical_plan_generator.h"
 
@@ -75,6 +79,10 @@ RC PhysicalPlanGenerator::create(LogicalOperator &logical_operator, unique_ptr<P
       return create_plan(static_cast<DeleteLogicalOperator &>(logical_operator), oper, session);
     } break;
 
+    case LogicalOperatorType::UPDATE: {
+      return create_plan(static_cast<UpdateLogicalOperator &>(logical_operator), oper, session);
+    } break;
+
     case LogicalOperatorType::EXPLAIN: {
       return create_plan(static_cast<ExplainLogicalOperator &>(logical_operator), oper, session);
     } break;
@@ -85,6 +93,10 @@ RC PhysicalPlanGenerator::create(LogicalOperator &logical_operator, unique_ptr<P
 
     case LogicalOperatorType::GROUP_BY: {
       return create_plan(static_cast<GroupByLogicalOperator &>(logical_operator), oper, session);
+    } break;
+
+    case LogicalOperatorType::ORDER_BY: {
+      return create_plan(static_cast<OrderByLogicalOperator &>(logical_operator), oper, session);
     } break;
 
     default: {
@@ -244,9 +256,9 @@ RC PhysicalPlanGenerator::create_plan(ProjectLogicalOperator &project_oper, uniq
 
 RC PhysicalPlanGenerator::create_plan(InsertLogicalOperator &insert_oper, unique_ptr<PhysicalOperator> &oper, Session* session)
 {
-  Table                  *table           = insert_oper.table();
-  vector<Value>          &values          = insert_oper.values();
-  InsertPhysicalOperator *insert_phy_oper = new InsertPhysicalOperator(table, std::move(values));
+  Table                       *table           = insert_oper.table();
+  vector<vector<Value>>       &value_groups    = insert_oper.value_groups();
+  InsertPhysicalOperator      *insert_phy_oper = new InsertPhysicalOperator(table, std::move(value_groups));
   oper.reset(insert_phy_oper);
   return RC::SUCCESS;
 }
@@ -368,6 +380,49 @@ RC PhysicalPlanGenerator::create_plan(GroupByLogicalOperator &logical_oper, uniq
   group_by_oper->add_child(std::move(child_physical_oper));
 
   oper = std::move(group_by_oper);
+  return rc;
+}
+
+RC PhysicalPlanGenerator::create_plan(UpdateLogicalOperator &logical_oper, unique_ptr<PhysicalOperator> &oper, Session* session)
+{
+  if (logical_oper.children().size() != 1) {
+    LOG_WARN("update operator should have 1 child, but got %d", static_cast<int>(logical_oper.children().size()));
+    return RC::INVALID_ARGUMENT;
+  }
+
+  unique_ptr<PhysicalOperator> child_physical_oper;
+  RC rc = create(*logical_oper.children().front(), child_physical_oper, session);
+  if (OB_FAIL(rc)) {
+    return rc;
+  }
+
+  auto update_oper = make_unique<UpdatePhysicalOperator>(
+      logical_oper.table(), logical_oper.field_meta(), logical_oper.value());
+  update_oper->add_child(std::move(child_physical_oper));
+  oper = std::move(update_oper);
+  return RC::SUCCESS;
+}
+
+RC PhysicalPlanGenerator::create_plan(OrderByLogicalOperator &logical_oper, unique_ptr<PhysicalOperator> &oper, Session* session)
+{
+  RC rc = RC::SUCCESS;
+
+  if (logical_oper.children().size() != 1) {
+    LOG_WARN("order by operator should have 1 child, but got %d", static_cast<int>(logical_oper.children().size()));
+    return RC::INVALID_ARGUMENT;
+  }
+
+  unique_ptr<PhysicalOperator> child_physical_oper;
+  rc = create(*logical_oper.children().front(), child_physical_oper, session);
+  if (OB_FAIL(rc)) {
+    LOG_WARN("failed to create child physical operator of order by. rc=%s", strrc(rc));
+    return rc;
+  }
+
+  auto order_by_oper = make_unique<OrderByPhysicalOperator>(
+      std::move(logical_oper.order_by_expressions()), std::move(logical_oper.asc()));
+  order_by_oper->add_child(std::move(child_physical_oper));
+  oper = std::move(order_by_oper);
   return rc;
 }
 

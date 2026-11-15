@@ -24,18 +24,20 @@ See the Mulan PSL v2 for more details. */
 class InsertLogicalOperator : public LogicalOperator
 {
 public:
-  InsertLogicalOperator(Table *table, vector<Value> values);
+  InsertLogicalOperator(Table *table, vector<vector<Value>> values);
   virtual ~InsertLogicalOperator() = default;
 
   LogicalOperatorType type() const override { return LogicalOperatorType::INSERT; }
 
   OpType get_op_type() const override { return OpType::LOGICALINSERT; }
 
-  Table               *table() const { return table_; }
-  const vector<Value> &values() const { return values_; }
-  vector<Value>       &values() { return values_; }
+  Table                        *table() const { return table_; }
+  const vector<vector<Value>> &value_groups() const { return value_groups_; }
+  vector<vector<Value>>       &value_groups() { return value_groups_; }
+  const vector<Value>         &values() const { return value_groups_.front(); }
+  vector<Value>               &values() { return value_groups_.front(); }
 
 private:
-  Table        *table_ = nullptr;
-  vector<Value> values_;
+  Table                 *table_ = nullptr;
+  vector<vector<Value>>  value_groups_;
 };

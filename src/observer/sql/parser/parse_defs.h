@@ -86,12 +86,25 @@ struct ConditionSqlNode
  * 甚至可以包含复杂的表达式。
  */
 
+struct FromSqlNode
+{
+  vector<string>           relations;
+  vector<ConditionSqlNode> conditions;  ///< join on 条件
+};
+
 struct SelectSqlNode
 {
   vector<unique_ptr<Expression>> expressions;  ///< 查询的表达式
   vector<string>                 relations;    ///< 查询的表
   vector<ConditionSqlNode>       conditions;   ///< 查询条件，使用AND串联起来多个条件
   vector<unique_ptr<Expression>> group_by;     ///< group by clause
+
+  struct OrderByItem
+  {
+    unique_ptr<Expression> expression;
+    bool                   asc = true;
+  };
+  vector<OrderByItem> order_by;  ///< order by clause
 };
 
 /**
@@ -110,8 +123,8 @@ struct CalcSqlNode
  */
 struct InsertSqlNode
 {
-  string        relation_name;  ///< Relation to insert into
-  vector<Value> values;         ///< 要插入的值
+  string                    relation_name;  ///< Relation to insert into
+  vector<vector<Value>>     value_groups;   ///< 一行或多行要插入的值
 };
 
 /**
@@ -192,6 +205,7 @@ struct CreateIndexSqlNode
   string index_name;      ///< Index name
   string relation_name;   ///< Relation name
   string attribute_name;  ///< Attribute name
+  bool   unique = false;  ///< 是否唯一索引
 };
 
 /**

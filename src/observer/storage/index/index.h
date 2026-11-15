@@ -52,6 +52,8 @@ public:
   virtual bool is_vector_index() { return false; }
 
   const IndexMeta &index_meta() const { return index_meta_; }
+  const FieldMeta &field_meta() const { return field_meta_; }
+  bool             unique() const { return index_meta_.unique(); }
 
   /**
    * @brief 插入一条数据

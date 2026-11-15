@@ -19,6 +19,7 @@ See the Mulan PSL v2 for more details. */
 #include "common/lang/sstream.h"
 #include "common/lang/string.h"
 #include "common/log/log.h"
+#include "common/type/date_util.h"
 
 Value::Value(int val) { set_int(val); }
 
@@ -170,6 +171,16 @@ void Value::set_string(const char *s, int len /*= 0*/)
       len = strnlen(s, len);
     } else {
       len = strlen(s);
+    }
+    string input(s, len);
+    string normalized;
+    if (input.size() <= 10 && normalize_date_string(input, normalized)) {
+      len = static_cast<int>(normalized.size());
+      value_.pointer_value_ = new char[len + 1];
+      length_               = len;
+      memcpy(value_.pointer_value_, normalized.c_str(), len);
+      value_.pointer_value_[len] = '\0';
+      return;
     }
     value_.pointer_value_ = new char[len + 1];
     length_               = len;

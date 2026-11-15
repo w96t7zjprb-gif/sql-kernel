@@ -185,6 +185,36 @@ Table *Db::find_table(const char *table_name) const
   return nullptr;
 }
 
+RC Db::drop_table(const char *table_name)
+{
+  if (table_name == nullptr || common::is_blank(table_name)) {
+    return RC::INVALID_ARGUMENT;
+  }
+
+  auto iter = opened_tables_.find(table_name);
+  if (iter == opened_tables_.end()) {
+    LOG_WARN("table not found. table=%s", table_name);
+    return RC::SCHEMA_TABLE_NOT_EXIST;
+  }
+
+  Table *table = iter->second;
+  opened_tables_.erase(iter);
+
+  RC rc = table->drop();
+  delete table;
+  if (OB_FAIL(rc)) {
+    LOG_WARN("failed to drop table %s. rc=%s", table_name, strrc(rc));
+    return rc;
+  }
+
+  // 元数据同步，避免重启后再次加载已删除的表
+  rc = sync();
+  if (OB_FAIL(rc)) {
+    LOG_WARN("failed to sync db after drop table %s. rc=%s", table_name, strrc(rc));
+  }
+  return rc;
+}
+
 Table *Db::find_table(int32_t table_id) const
 {
   for (auto pair : opened_tables_) {

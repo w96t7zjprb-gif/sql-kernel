@@ -39,7 +39,29 @@ HeapTableEngine::~HeapTableEngine()
 RC HeapTableEngine::insert_record(Record &record)
 {
   RC rc = RC::SUCCESS;
-  rc    = record_handler_->insert_record(record.data(), table_meta_->record_size(), &record.rid());
+
+  // 唯一索引：插入前检查是否已有相同键值
+  for (Index *index : indexes_) {
+    if (!index->unique()) {
+      continue;
+    }
+    const FieldMeta &field_meta = index->field_meta();
+    const char      *key        = record.data() + field_meta.offset();
+    IndexScanner    *scanner    = index->create_scanner(key, field_meta.len(), true, key, field_meta.len(), true);
+    if (scanner == nullptr) {
+      return RC::INTERNAL;
+    }
+    RID existing_rid;
+    RC  scan_rc = scanner->next_entry(&existing_rid);
+    scanner->destroy();
+    if (scan_rc == RC::SUCCESS) {
+      LOG_WARN("duplicate key for unique index. table=%s, index=%s",
+          table_meta_->name(), index->index_meta().name());
+      return RC::RECORD_DUPLICATE_KEY;
+    }
+  }
+
+  rc = record_handler_->insert_record(record.data(), table_meta_->record_size(), &record.rid());
   if (rc != RC::SUCCESS) {
     LOG_ERROR("Insert record failed. table name=%s, rc=%s", table_meta_->name(), strrc(rc));
     return rc;
@@ -72,6 +94,44 @@ RC HeapTableEngine::insert_chunk(const Chunk& chunk)
 
   // TODO: insert chunk support update index
   return rc;
+}
+
+RC HeapTableEngine::update_record(const Record &old_record, const Record &new_record)
+{
+  const RID &rid = old_record.rid();
+
+  RC rc = delete_entry_of_indexes(old_record.data(), rid, false);
+  if (rc != RC::SUCCESS) {
+    LOG_WARN("failed to delete old index entries. table=%s, rid=%s, rc=%s",
+        table_meta_->name(), rid.to_string().c_str(), strrc(rc));
+    return rc;
+  }
+
+  rc = record_handler_->visit_record(rid, [&new_record](Record &record) {
+    memcpy(record.data(), new_record.data(), record.len());
+    return true;
+  });
+  if (rc != RC::SUCCESS) {
+    insert_entry_of_indexes(old_record.data(), rid);
+    LOG_WARN("failed to update record data. table=%s, rid=%s, rc=%s",
+        table_meta_->name(), rid.to_string().c_str(), strrc(rc));
+    return rc;
+  }
+
+  rc = insert_entry_of_indexes(new_record.data(), rid);
+  if (rc != RC::SUCCESS) {
+    // 新值插入索引失败（例如唯一约束冲突），把记录与索引都恢复成旧值
+    record_handler_->visit_record(rid, [&old_record](Record &record) {
+      memcpy(record.data(), old_record.data(), record.len());
+      return true;
+    });
+    insert_entry_of_indexes(old_record.data(), rid);
+    LOG_WARN("failed to insert new index entries. table=%s, rid=%s, rc=%s",
+        table_meta_->name(), rid.to_string().c_str(), strrc(rc));
+    return rc;
+  }
+
+  return RC::SUCCESS;
 }
 
 RC HeapTableEngine::visit_record(const RID &rid, function<bool(Record &)> visitor)
@@ -122,7 +182,7 @@ RC HeapTableEngine::get_chunk_scanner(ChunkFileScanner &scanner, Trx *trx, ReadW
   return rc;
 }
 
-RC HeapTableEngine::create_index(Trx *trx, const FieldMeta *field_meta, const char *index_name)
+RC HeapTableEngine::create_index(Trx *trx, const FieldMeta *field_meta, const char *index_name, bool unique)
 {
   if (common::is_blank(index_name) || nullptr == field_meta) {
     LOG_INFO("Invalid input arguments, table name is %s, index_name is blank or attribute_name is blank", table_meta_->name());
@@ -131,7 +191,7 @@ RC HeapTableEngine::create_index(Trx *trx, const FieldMeta *field_meta, const ch
 
   IndexMeta new_index_meta;
 
-  RC rc = new_index_meta.init(index_name, *field_meta);
+  RC rc = new_index_meta.init(index_name, *field_meta, unique);
   if (rc != RC::SUCCESS) {
     LOG_INFO("Failed to init IndexMeta in table:%s, index_name:%s, field_name:%s", 
              table_meta_->name(), index_name, field_meta->name());

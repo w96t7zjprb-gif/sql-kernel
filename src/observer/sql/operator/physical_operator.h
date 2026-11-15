@@ -47,12 +47,14 @@ enum class PhysicalOperatorType
   CALC,
   STRING_LIST,
   DELETE,
+  UPDATE,
   INSERT,
   SCALAR_GROUP_BY,
   HASH_GROUP_BY,
   GROUP_BY_VEC,
   AGGREGATE_VEC,
   EXPR_VEC,
+  ORDER_BY,
 };
 
 /**

@@ -14,12 +14,14 @@ See the Mulan PSL v2 for more details. */
 
 #include <limits.h>
 #include <string.h>
+#include <filesystem>
 
 #include "common/defs.h"
 #include "common/lang/string.h"
 #include "common/lang/span.h"
 #include "common/lang/algorithm.h"
 #include "common/log/log.h"
+#include "common/type/date_util.h"
 #include "common/global_context.h"
 #include "storage/db/db.h"
 #include "storage/buffer/disk_buffer_pool.h"
@@ -198,7 +200,7 @@ RC Table::delete_record_with_trx(const Record &record, Trx *trx)
 
 RC Table::update_record_with_trx(const Record &old_record, const Record &new_record, Trx* trx)
 {
-  return engine_->update_record_with_trx(old_record, new_record, trx);
+  return engine_->update_record(old_record, new_record);
 }
 
 RC Table::get_record(const RID &rid, Record &record)
@@ -256,6 +258,16 @@ RC Table::set_value_to_record(char *record_data, const Value &value, const Field
   size_t       copy_len = field->len();
   const size_t data_len = value.length();
   if (field->type() == AttrType::CHARS) {
+    if (field->len() <= 10 && data_len > 0) {
+      string input(value.data(), std::min(data_len, static_cast<size_t>(field->len())));
+      if (input.find('-') != string::npos) {
+        string normalized;
+        if (!normalize_date_string(input, normalized)) {
+          LOG_WARN("invalid date value: %s", input.c_str());
+          return RC::INVALID_ARGUMENT;
+        }
+      }
+    }
     if (copy_len > data_len) {
       copy_len = data_len + 1;
     }
@@ -274,9 +286,9 @@ RC Table::get_chunk_scanner(ChunkFileScanner &scanner, Trx *trx, ReadWriteMode m
   return engine_->get_chunk_scanner(scanner, trx, mode);
 }
 
-RC Table::create_index(Trx *trx, const FieldMeta *field_meta, const char *index_name)
+RC Table::create_index(Trx *trx, const FieldMeta *field_meta, const char *index_name, bool unique)
 {
-  return engine_->create_index(trx, field_meta, index_name);
+  return engine_->create_index(trx, field_meta, index_name, unique);
 }
 
 RC Table::delete_record(const Record &record)
@@ -296,4 +308,32 @@ Index *Table::find_index_by_field(const char *field_name) const
 RC Table::sync()
 {
   return engine_->sync();
+}
+
+RC Table::drop()
+{
+  if (db_ == nullptr) {
+    return RC::INTERNAL;
+  }
+
+  string base_dir = db_->path();
+  vector<string> index_names;
+  for (int i = 0; i < table_meta_.index_num(); i++) {
+    const IndexMeta *index_meta = table_meta_.index(i);
+    if (index_meta != nullptr) {
+      index_names.push_back(index_meta->name());
+    }
+  }
+
+  // 先关闭数据文件和索引文件，再删除磁盘文件
+  engine_.reset();
+
+  std::filesystem::remove(table_meta_file(base_dir.c_str(), name()));
+  std::filesystem::remove(table_data_file(base_dir.c_str(), name()));
+  std::filesystem::remove(table_lob_file(base_dir.c_str(), name()));
+  for (const string &index_name : index_names) {
+    std::filesystem::remove(table_index_file(base_dir.c_str(), name(), index_name.c_str()));
+  }
+
+  return RC::SUCCESS;
 }
