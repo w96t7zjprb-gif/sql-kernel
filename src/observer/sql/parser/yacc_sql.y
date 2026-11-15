@@ -124,6 +124,11 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
         LE
         GE
         NE
+        IN
+        IS
+        NOT
+        NULL_T
+        NULLABLE
 
 /** union 中定义各种数据类型，真实生成的代码也是union类型，所以不能有非POD类型的数据 **/
 %union {
@@ -175,6 +180,7 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
 %type <condition>           condition
 %type <value>               value
 %type <number>              number
+%type <number>              null_spec
 %type <cstring>             relation
 %type <comp>                comp_op
 %type <rel_attr>            rel_attr
@@ -328,7 +334,8 @@ create_index_stmt:    /*create index 语句的语法解析树*/
       create_index.index_name = $3;
       create_index.relation_name = $5;
       if ($7 != nullptr && !$7->empty()) {
-        create_index.attribute_name = (*$7)[0];
+        create_index.attribute_names = *$7;
+        create_index.attribute_name  = (*$7)[0];
       }
       delete $7;
     }
@@ -339,7 +346,8 @@ create_index_stmt:    /*create index 语句的语法解析树*/
       create_index.index_name = $4;
       create_index.relation_name = $6;
       if ($8 != nullptr && !$8->empty()) {
-        create_index.attribute_name = (*$8)[0];
+        create_index.attribute_names = *$8;
+        create_index.attribute_name  = (*$8)[0];
       }
       delete $8;
       create_index.unique = true;
@@ -391,34 +399,45 @@ attr_def_list:
     ;
     
 attr_def:
-    ID type LBRACE number RBRACE 
+    ID type LBRACE number RBRACE null_spec
     {
       $$ = new AttrInfoSqlNode;
       $$->type = (AttrType)$2;
       $$->name = $1;
       $$->length = $4;
+      $$->nullable = $6;
     }
-    | ID type
+    | ID type null_spec
     {
       $$ = new AttrInfoSqlNode;
       $$->type = (AttrType)$2;
       $$->name = $1;
       $$->length = 4;
+      $$->nullable = $3;
     }
-    | ID TEXT_T
+    | ID TEXT_T null_spec
     {
       $$ = new AttrInfoSqlNode;
       $$->type = AttrType::CHARS;
       $$->name = $1;
       $$->length = 4096;
+      $$->nullable = $3;
     }
-    | ID DATE_T
+    | ID DATE_T null_spec
     {
       $$ = new AttrInfoSqlNode;
       $$->type = AttrType::CHARS;
       $$->name = $1;
       $$->length = 10;
+      $$->nullable = $3;
     }
+    ;
+
+null_spec:
+    /* empty */ { $$ = false; }
+    | NULL_T { $$ = true; }
+    | NULLABLE { $$ = true; }
+    | NOT NULL_T { $$ = false; }
     ;
 number:
     NUMBER {$$ = $1;}
@@ -488,10 +507,33 @@ value_list:
       $$->emplace_back(*$1);
       delete $1;
     }
-    | value_list COMMA value { 
+    | '-' value
+    {
+      $$ = new vector<Value>;
+      Value negated(*$2);
+      if (negated.attr_type() == AttrType::INTS) {
+        negated.set_int(-negated.get_int());
+      } else if (negated.attr_type() == AttrType::FLOATS) {
+        negated.set_float(-negated.get_float());
+      }
+      $$->emplace_back(negated);
+      delete $2;
+    }
+    | value_list COMMA value {
       $$ = $1;
       $$->emplace_back(*$3);
       delete $3;
+    }
+    | value_list COMMA '-' value {
+      $$ = $1;
+      Value negated(*$4);
+      if (negated.attr_type() == AttrType::INTS) {
+        negated.set_int(-negated.get_int());
+      } else if (negated.attr_type() == AttrType::FLOATS) {
+        negated.set_float(-negated.get_float());
+      }
+      $$->emplace_back(negated);
+      delete $4;
     }
     ;
 value:
@@ -507,6 +549,10 @@ value:
       char *tmp = common::substr($1,1,strlen($1)-2);
       $$ = new Value(tmp);
       free(tmp);
+    }
+    | NULL_T {
+      $$ = new Value();
+      $$->set_null();
     }
     ;
 storage_format:
@@ -636,6 +682,11 @@ expression:
       $$->set_name(token_name(sql_string, &@$));
       delete $1;
     }
+    | LBRACE select_stmt RBRACE {
+      $$ = new SubqueryExpr(make_shared<SelectSqlNode>(std::move($2->selection)));
+      $$->set_name(token_name(sql_string, &@$));
+      delete $2;
+    }
     | aggregate_expression {
       $$ = $1;
     }
@@ -644,6 +695,15 @@ expression:
 aggregate_expression:
     ID LBRACE expression RBRACE {
       $$ = create_aggregate_expression($1, $3, sql_string, &@$);
+    }
+    | ID LBRACE RBRACE {
+      $$ = new UnboundAggregateExpr($1, nullptr, 0);
+      $$->set_name(token_name(sql_string, &@$));
+    }
+    | ID LBRACE expression COMMA expression_list RBRACE {
+      $$ = new UnboundAggregateExpr($1, nullptr, 2);
+      $$->set_name(token_name(sql_string, &@$));
+      delete $5;
     }
     ;
 
@@ -769,53 +829,40 @@ condition_list:
     }
     ;
 condition:
-    rel_attr comp_op value
+    expression comp_op expression
     {
       $$ = new ConditionSqlNode;
-      $$->left_is_attr = 1;
-      $$->left_attr = *$1;
-      $$->right_is_attr = 0;
-      $$->right_value = *$3;
-      $$->comp = $2;
-
-      delete $1;
-      delete $3;
+      $$->left_expr  = $1;
+      $$->right_expr = $3;
+      $$->comp       = $2;
     }
-    | value comp_op value 
+    | expression IN LBRACE select_stmt RBRACE
     {
       $$ = new ConditionSqlNode;
-      $$->left_is_attr = 0;
-      $$->left_value = *$1;
-      $$->right_is_attr = 0;
-      $$->right_value = *$3;
-      $$->comp = $2;
-
-      delete $1;
-      delete $3;
+      $$->left_expr = $1;
+      $$->subquery  = make_shared<SelectSqlNode>(std::move($4->selection));
+      $$->not_in    = false;
+      delete $4;
     }
-    | rel_attr comp_op rel_attr
+    | expression NOT IN LBRACE select_stmt RBRACE
     {
       $$ = new ConditionSqlNode;
-      $$->left_is_attr = 1;
-      $$->left_attr = *$1;
-      $$->right_is_attr = 1;
-      $$->right_attr = *$3;
-      $$->comp = $2;
-
-      delete $1;
-      delete $3;
+      $$->left_expr = $1;
+      $$->subquery  = make_shared<SelectSqlNode>(std::move($5->selection));
+      $$->not_in    = true;
+      delete $5;
     }
-    | value comp_op rel_attr
+    | expression IS NULL_T
     {
       $$ = new ConditionSqlNode;
-      $$->left_is_attr = 0;
-      $$->left_value = *$1;
-      $$->right_is_attr = 1;
-      $$->right_attr = *$3;
-      $$->comp = $2;
-
-      delete $1;
-      delete $3;
+      $$->left_expr = $1;
+      $$->is_null   = true;
+    }
+    | expression IS NOT NULL_T
+    {
+      $$ = new ConditionSqlNode;
+      $$->left_expr  = $1;
+      $$->is_not_null = true;
     }
     ;
 

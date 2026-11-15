@@ -94,6 +94,18 @@ RC ExpressionBinder::bind_expression(unique_ptr<Expression> &expr, vector<unique
       ASSERT(false, "shouldn't be here");
     } break;
 
+    case ExprType::SUBQUERY: {
+      return bind_subquery_expression(expr, bound_expressions);
+    } break;
+
+    case ExprType::IN: {
+      return bind_in_expression(expr, bound_expressions);
+    } break;
+
+    case ExprType::IS_NULL: {
+      return bind_is_null_expression(expr, bound_expressions);
+    } break;
+
     default: {
       LOG_WARN("unknown expression type: %d", static_cast<int>(expr->type()));
       return RC::INTERNAL;
@@ -342,20 +354,22 @@ RC ExpressionBinder::bind_arithmetic_expression(
     left_expr.reset(left.release());
   }
 
-  child_bound_expressions.clear();
-  rc = bind_expression(right_expr, child_bound_expressions);
-  if (OB_FAIL(rc)) {
-    return rc;
-  }
+  if (right_expr != nullptr) {
+    child_bound_expressions.clear();
+    rc = bind_expression(right_expr, child_bound_expressions);
+    if (OB_FAIL(rc)) {
+      return rc;
+    }
 
-  if (child_bound_expressions.size() != 1) {
-    LOG_WARN("invalid right children number of comparison expression: %d", child_bound_expressions.size());
-    return RC::INVALID_ARGUMENT;
-  }
+    if (child_bound_expressions.size() != 1) {
+      LOG_WARN("invalid right children number of arithmetic expression: %d", child_bound_expressions.size());
+      return RC::INVALID_ARGUMENT;
+    }
 
-  unique_ptr<Expression> &right = child_bound_expressions[0];
-  if (right.get() != right_expr.get()) {
-    right_expr.reset(right.release());
+    unique_ptr<Expression> &right = child_bound_expressions[0];
+    if (right.get() != right_expr.get()) {
+      right_expr.reset(right.release());
+    }
   }
 
   bound_expressions.emplace_back(std::move(expr));
@@ -423,6 +437,11 @@ RC ExpressionBinder::bind_aggregate_expression(
     return rc;
   }
 
+  if (unbound_aggregate_expr->arg_count() != 1 || unbound_aggregate_expr->child() == nullptr) {
+    LOG_WARN("aggregate function requires exactly one argument");
+    return RC::INVALID_ARGUMENT;
+  }
+
   unique_ptr<Expression>        &child_expr = unbound_aggregate_expr->child();
   vector<unique_ptr<Expression>> child_bound_expressions;
 
@@ -453,5 +472,59 @@ RC ExpressionBinder::bind_aggregate_expression(
   }
 
   bound_expressions.emplace_back(std::move(aggregate_expr));
+  return RC::SUCCESS;
+}
+
+
+RC ExpressionBinder::bind_subquery_expression(
+    unique_ptr<Expression> &subquery_expr, vector<unique_ptr<Expression>> &bound_expressions)
+{
+  auto *subquery = static_cast<SubqueryExpr *>(subquery_expr.get());
+  subquery->set_db(context_.db());
+  vector<Table *> outer_tables = context_.outer_tables();
+  outer_tables.insert(outer_tables.end(), context_.query_tables().begin(), context_.query_tables().end());
+  subquery->set_outer_tables(outer_tables);
+  bound_expressions.emplace_back(std::move(subquery_expr));
+  return RC::SUCCESS;
+}
+
+RC ExpressionBinder::bind_in_expression(unique_ptr<Expression> &in_expr, vector<unique_ptr<Expression>> &bound_expressions)
+{
+  auto *in = static_cast<InExpr *>(in_expr.get());
+  vector<unique_ptr<Expression>> left_bound;
+  RC rc = bind_expression(in->left(), left_bound);
+  if (OB_FAIL(rc)) {
+    return rc;
+  }
+  if (left_bound.size() != 1) {
+    return RC::INVALID_ARGUMENT;
+  }
+  if (left_bound[0].get() != in->left().get()) {
+    in->left().reset(left_bound[0].release());
+  }
+  in->subquery()->set_db(context_.db());
+  vector<Table *> outer_tables = context_.outer_tables();
+  outer_tables.insert(outer_tables.end(), context_.query_tables().begin(), context_.query_tables().end());
+  in->subquery()->set_outer_tables(outer_tables);
+  bound_expressions.emplace_back(std::move(in_expr));
+  return RC::SUCCESS;
+}
+
+RC ExpressionBinder::bind_is_null_expression(
+    unique_ptr<Expression> &is_null_expr, vector<unique_ptr<Expression>> &bound_expressions)
+{
+  auto *is_null = static_cast<IsNullExpr *>(is_null_expr.get());
+  vector<unique_ptr<Expression>> child_bound;
+  RC rc = bind_expression(is_null->child(), child_bound);
+  if (OB_FAIL(rc)) {
+    return rc;
+  }
+  if (child_bound.size() != 1) {
+    return RC::INVALID_ARGUMENT;
+  }
+  if (child_bound[0].get() != is_null->child().get()) {
+    is_null->child().reset(child_bound[0].release());
+  }
+  bound_expressions.emplace_back(std::move(is_null_expr));
   return RC::SUCCESS;
 }

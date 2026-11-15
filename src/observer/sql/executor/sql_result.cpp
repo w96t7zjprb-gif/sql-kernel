@@ -17,6 +17,7 @@ See the Mulan PSL v2 for more details. */
 #include "common/sys/rc.h"
 #include "session/session.h"
 #include "storage/trx/trx.h"
+#include "sql/expr/expression.h"
 
 SqlResult::SqlResult(Session *session) : session_(session) {}
 
@@ -30,7 +31,12 @@ RC SqlResult::open()
 
   Trx *trx = session_->current_trx();
   trx->start_if_need();
-  return operator_->open(trx);
+  set_subquery_trx(trx);
+  RC rc = operator_->open(trx);
+  if (OB_FAIL(rc)) {
+    set_subquery_trx(nullptr);
+  }
+  return rc;
 }
 
 RC SqlResult::close()
@@ -44,6 +50,7 @@ RC SqlResult::close()
   }
 
   operator_.reset();
+  set_subquery_trx(nullptr);
 
   if (session_ && !session_->is_trx_multi_operation_mode()) {
     if (rc == RC::SUCCESS) {

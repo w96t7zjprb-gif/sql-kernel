@@ -22,6 +22,10 @@ See the Mulan PSL v2 for more details. */
 #include "common/lang/algorithm.h"
 #include "common/log/log.h"
 #include "common/type/date_util.h"
+
+#include <cmath>
+#include <cstring>
+#include <limits>
 #include "common/global_context.h"
 #include "storage/db/db.h"
 #include "storage/buffer/disk_buffer_pool.h"
@@ -255,6 +259,28 @@ RC Table::make_record(int value_num, const Value *values, Record &record)
 
 RC Table::set_value_to_record(char *record_data, const Value &value, const FieldMeta *field)
 {
+  if (value.is_null()) {
+    if (!field->nullable()) {
+      LOG_WARN("field is not nullable. table=%s, field=%s", table_meta_.name(), field->name());
+      return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+    }
+    switch (field->type()) {
+      case AttrType::INTS: {
+        int min_int = INT32_MIN;
+        memcpy(record_data + field->offset(), &min_int, sizeof(min_int));
+      } break;
+      case AttrType::FLOATS: {
+        float nan_val = std::numeric_limits<float>::quiet_NaN();
+        memcpy(record_data + field->offset(), &nan_val, sizeof(nan_val));
+      } break;
+      case AttrType::CHARS: {
+        memset(record_data + field->offset(), 0, field->len());
+      } break;
+      default: return RC::SCHEMA_FIELD_TYPE_MISMATCH;
+    }
+    return RC::SUCCESS;
+  }
+
   size_t       copy_len = field->len();
   const size_t data_len = value.length();
   if (field->type() == AttrType::CHARS) {

@@ -16,6 +16,8 @@ See the Mulan PSL v2 for more details. */
 
 #include "sql/expr/expression.h"
 
+class Db;
+
 class BinderContext
 {
 public:
@@ -24,12 +26,20 @@ public:
 
   void add_table(Table *table) { query_tables_.push_back(table); }
 
+  void set_db(Db *db) { db_ = db; }
+  Db  *db() const { return db_; }
+
+  void set_outer_tables(const vector<Table *> &tables) { outer_tables_ = tables; }
+  const vector<Table *> &outer_tables() const { return outer_tables_; }
+
   Table *find_table(const char *table_name) const;
 
   const vector<Table *> &query_tables() const { return query_tables_; }
 
 private:
   vector<Table *> query_tables_;
+  vector<Table *> outer_tables_;
+  Db             *db_ = nullptr;
 };
 
 /**
@@ -59,6 +69,11 @@ private:
       unique_ptr<Expression> &arithmetic_expr, vector<unique_ptr<Expression>> &bound_expressions);
   RC bind_aggregate_expression(
       unique_ptr<Expression> &aggregate_expr, vector<unique_ptr<Expression>> &bound_expressions);
+  RC bind_subquery_expression(
+      unique_ptr<Expression> &subquery_expr, vector<unique_ptr<Expression>> &bound_expressions);
+  RC bind_in_expression(unique_ptr<Expression> &in_expr, vector<unique_ptr<Expression>> &bound_expressions);
+  RC bind_is_null_expression(
+      unique_ptr<Expression> &is_null_expr, vector<unique_ptr<Expression>> &bound_expressions);
 
 private:
   BinderContext &context_;

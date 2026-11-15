@@ -57,6 +57,14 @@ public:
 
   void reset();
 
+  void set_null(AttrType type = AttrType::UNDEFINED)
+  {
+    reset();
+    attr_type_ = type;
+    is_null_   = true;
+  }
+  bool is_null() const { return is_null_; }
+
   static RC add(const Value &left, const Value &right, Value &result)
   {
     return DataType::type_instance(result.attr_type())->add(left, right, result);
@@ -84,6 +92,10 @@ public:
 
   static RC cast_to(const Value &value, AttrType to_type, Value &result)
   {
+    if (value.is_null()) {
+      result.set_null(to_type);
+      return RC::SUCCESS;
+    }
     return DataType::type_instance(value.attr_type())->cast_to(value, to_type, result);
   }
 
@@ -134,4 +146,5 @@ private:
 
   /// 是否申请并占有内存, 目前对于 CHARS 类型 own_data_ 为true, 其余类型 own_data_ 为false
   bool own_data_ = false;
+  bool is_null_   = false;
 };

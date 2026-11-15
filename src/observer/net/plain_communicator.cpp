@@ -157,6 +157,8 @@ RC PlainCommunicator::write_debug(SessionEvent *request, bool &need_disconnect)
   return RC::SUCCESS;
 }
 
+static RC collect_tuple_result(SqlResult *sql_result, string &rows);
+
 RC PlainCommunicator::write_result(SessionEvent *event, bool &need_disconnect)
 {
   RC rc = write_result_internal(event, need_disconnect);
@@ -195,6 +197,17 @@ RC PlainCommunicator::write_result_internal(SessionEvent *event, bool &need_disc
     sql_result->close();
     sql_result->set_return_code(rc);
     return write_state(event, need_disconnect);
+  }
+
+  string result_rows;
+  if (!(event->session()->get_execution_mode() == ExecutionMode::CHUNK_ITERATOR
+          && event->session()->used_chunk_mode())) {
+    rc = collect_tuple_result(sql_result, result_rows);
+    if (OB_FAIL(rc)) {
+      sql_result->close();
+      sql_result->set_return_code(rc);
+      return write_state(event, need_disconnect);
+    }
   }
 
   const TupleSchema &schema   = sql_result->tuple_schema();
@@ -241,7 +254,12 @@ RC PlainCommunicator::write_result_internal(SessionEvent *event, bool &need_disc
       && event->session()->used_chunk_mode()) {
     rc = write_chunk_result(sql_result);
   } else {
-    rc = write_tuple_result(sql_result);
+    rc = writer_->writen(result_rows.data(), result_rows.size());
+    if (OB_FAIL(rc)) {
+      LOG_WARN("failed to send data to client. err=%s", strerror(errno));
+      sql_result->close();
+      return rc;
+    }
   }
 
   if (OB_FAIL(rc)) {
@@ -267,6 +285,34 @@ RC PlainCommunicator::write_result_internal(SessionEvent *event, bool &need_disc
     rc = rc_close;
   }
 
+  return rc;
+}
+
+static RC collect_tuple_result(SqlResult *sql_result, string &rows)
+{
+  RC    rc    = RC::SUCCESS;
+  Tuple *tuple = nullptr;
+  while (RC::SUCCESS == (rc = sql_result->next_tuple(tuple))) {
+    if (tuple == nullptr) {
+      return RC::INTERNAL;
+    }
+    const int cell_num = tuple->cell_num();
+    for (int i = 0; i < cell_num; i++) {
+      if (i != 0) {
+        rows.append(" | ");
+      }
+      Value value;
+      RC    cell_rc = tuple->cell_at(i, value);
+      if (cell_rc != RC::SUCCESS) {
+        return cell_rc;
+      }
+      rows.append(value.to_string());
+    }
+    rows.append("\n");
+  }
+  if (rc == RC::RECORD_EOF) {
+    rc = RC::SUCCESS;
+  }
   return rc;
 }
 

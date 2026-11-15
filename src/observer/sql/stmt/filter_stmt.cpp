@@ -13,6 +13,8 @@ See the Mulan PSL v2 for more details. */
 //
 
 #include "sql/stmt/filter_stmt.h"
+#include "sql/parser/expression_binder.h"
+#include "sql/expr/expression.h"
 #include "common/lang/string.h"
 #include "common/log/log.h"
 #include "common/sys/rc.h"
@@ -81,52 +83,76 @@ RC get_table_and_field(Db *db, Table *default_table, unordered_map<string, Table
 RC FilterStmt::create_filter_unit(Db *db, Table *default_table, unordered_map<string, Table *> *tables,
     const ConditionSqlNode &condition, FilterUnit *&filter_unit)
 {
-  RC rc = RC::SUCCESS;
+  BinderContext context;
+  context.set_db(db);
+  if (tables != nullptr) {
+    for (const auto &item : *tables) {
+      context.add_table(item.second);
+    }
+  } else if (default_table != nullptr) {
+    context.add_table(default_table);
+  }
 
-  CompOp comp = condition.comp;
-  if (comp < EQUAL_TO || comp >= NO_OP) {
-    LOG_WARN("invalid compare operator : %d", comp);
+  ExpressionBinder binder(context);
+
+  auto bind_operand = [&](const Expression *src, bool is_attr, const Value &value, const RelAttrSqlNode &attr,
+                            unique_ptr<Expression> &out) -> RC {
+    unique_ptr<Expression> expr;
+    if (src != nullptr) {
+      expr = src->copy();
+    } else if (is_attr) {
+      expr = make_unique<UnboundFieldExpr>(attr.relation_name, attr.attribute_name);
+    } else {
+      expr = make_unique<ValueExpr>(value);
+    }
+
+    vector<unique_ptr<Expression>> bound;
+    RC rc = binder.bind_expression(expr, bound);
+    if (OB_FAIL(rc)) {
+      return rc;
+    }
+    if (bound.size() != 1) {
+      LOG_WARN("condition operand should bind to exactly one expression, got %d", static_cast<int>(bound.size()));
+      return RC::INVALID_ARGUMENT;
+    }
+    out = std::move(bound[0]);
+    return RC::SUCCESS;
+  };
+
+  unique_ptr<Expression> left_expr;
+  RC rc = bind_operand(condition.left_expr, condition.left_is_attr, condition.left_value, condition.left_attr, left_expr);
+  if (OB_FAIL(rc)) {
+    LOG_WARN("failed to bind left operand of condition");
+    return rc;
+  }
+
+  unique_ptr<Expression> predicate;
+  if (condition.subquery != nullptr) {
+    unique_ptr<SubqueryExpr> subquery = make_unique<SubqueryExpr>(condition.subquery);
+    predicate = make_unique<InExpr>(std::move(left_expr), std::move(subquery), condition.not_in);
+  } else if (condition.is_null || condition.is_not_null) {
+    predicate = make_unique<IsNullExpr>(std::move(left_expr), condition.is_not_null);
+  } else {
+    unique_ptr<Expression> right_expr;
+    rc = bind_operand(condition.right_expr, condition.right_is_attr, condition.right_value, condition.right_attr, right_expr);
+    if (OB_FAIL(rc)) {
+      LOG_WARN("failed to bind right operand of condition");
+      return rc;
+    }
+    predicate = make_unique<ComparisonExpr>(condition.comp, std::move(left_expr), std::move(right_expr));
+  }
+
+  vector<unique_ptr<Expression>> bound_predicate;
+  rc = binder.bind_expression(predicate, bound_predicate);
+  if (OB_FAIL(rc)) {
+    LOG_WARN("failed to bind condition expression");
+    return rc;
+  }
+  if (bound_predicate.size() != 1) {
     return RC::INVALID_ARGUMENT;
   }
 
   filter_unit = new FilterUnit;
-
-  if (condition.left_is_attr) {
-    Table           *table = nullptr;
-    const FieldMeta *field = nullptr;
-    rc                     = get_table_and_field(db, default_table, tables, condition.left_attr, table, field);
-    if (rc != RC::SUCCESS) {
-      LOG_WARN("cannot find attr");
-      return rc;
-    }
-    FilterObj filter_obj;
-    filter_obj.init_attr(Field(table, field));
-    filter_unit->set_left(filter_obj);
-  } else {
-    FilterObj filter_obj;
-    filter_obj.init_value(condition.left_value);
-    filter_unit->set_left(filter_obj);
-  }
-
-  if (condition.right_is_attr) {
-    Table           *table = nullptr;
-    const FieldMeta *field = nullptr;
-    rc                     = get_table_and_field(db, default_table, tables, condition.right_attr, table, field);
-    if (rc != RC::SUCCESS) {
-      LOG_WARN("cannot find attr");
-      return rc;
-    }
-    FilterObj filter_obj;
-    filter_obj.init_attr(Field(table, field));
-    filter_unit->set_right(filter_obj);
-  } else {
-    FilterObj filter_obj;
-    filter_obj.init_value(condition.right_value);
-    filter_unit->set_right(filter_obj);
-  }
-
-  filter_unit->set_comp(comp);
-
-  // 检查两个类型是否能够比较
-  return rc;
+  filter_unit->set_expr(std::move(bound_predicate[0]));
+  return RC::SUCCESS;
 }

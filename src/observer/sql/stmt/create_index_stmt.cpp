@@ -40,10 +40,23 @@ RC CreateIndexStmt::create(Db *db, const CreateIndexSqlNode &create_index, Stmt 
     return RC::SCHEMA_TABLE_NOT_EXIST;
   }
 
-  const FieldMeta *field_meta = table->table_meta().field(create_index.attribute_name.c_str());
-  if (nullptr == field_meta) {
-    LOG_WARN("no such field in table. db=%s, table=%s, field name=%s", 
-             db->name(), table_name, create_index.attribute_name.c_str());
+  vector<string> attribute_names = create_index.attribute_names;
+  if (attribute_names.empty()) {
+    attribute_names.push_back(create_index.attribute_name);
+  }
+  const FieldMeta *field_meta = nullptr;
+  for (const string &attribute_name : attribute_names) {
+    const FieldMeta *field = table->table_meta().field(attribute_name.c_str());
+    if (field == nullptr) {
+      LOG_WARN("no such field in table. db=%s, table=%s, field name=%s",
+          db->name(), table_name, attribute_name.c_str());
+      return RC::SCHEMA_FIELD_NOT_EXIST;
+    }
+    if (field_meta == nullptr) {
+      field_meta = field;
+    }
+  }
+  if (field_meta == nullptr) {
     return RC::SCHEMA_FIELD_NOT_EXIST;
   }
 

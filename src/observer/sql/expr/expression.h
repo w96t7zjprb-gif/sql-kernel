@@ -23,6 +23,10 @@ See the Mulan PSL v2 for more details. */
 #include "storage/common/chunk.h"
 
 class Tuple;
+class Table;
+class Db;
+class Trx;
+struct SelectSqlNode;
 
 /**
  * @defgroup Expression
@@ -47,6 +51,9 @@ enum class ExprType
   CONJUNCTION,  ///< 多个表达式使用同一种关系(AND或OR)来联结
   ARITHMETIC,   ///< 算术运算
   AGGREGATION,  ///< 聚合运算
+  SUBQUERY,     ///< 子查询
+  IN,           ///< IN / NOT IN 子查询
+  IS_NULL,      ///< IS NULL / IS NOT NULL
 };
 
 /**
@@ -442,27 +449,30 @@ private:
 class UnboundAggregateExpr : public Expression
 {
 public:
-  UnboundAggregateExpr(const char *aggregate_name, Expression *child);
-  UnboundAggregateExpr(const char *aggregate_name, unique_ptr<Expression> child);
+  UnboundAggregateExpr(const char *aggregate_name, Expression *child, int arg_count = 1);
+  UnboundAggregateExpr(const char *aggregate_name, unique_ptr<Expression> child, int arg_count = 1);
   virtual ~UnboundAggregateExpr() = default;
 
   ExprType type() const override { return ExprType::UNBOUND_AGGREGATION; }
 
   unique_ptr<Expression> copy() const override
   {
-    return make_unique<UnboundAggregateExpr>(aggregate_name_.c_str(), child_->copy());
+    return make_unique<UnboundAggregateExpr>(
+        aggregate_name_.c_str(), child_ == nullptr ? nullptr : child_->copy(), arg_count_);
   }
 
   const char *aggregate_name() const { return aggregate_name_.c_str(); }
 
   unique_ptr<Expression> &child() { return child_; }
+  int                     arg_count() const { return arg_count_; }
 
   RC       get_value(const Tuple &tuple, Value &value) const override { return RC::INTERNAL; }
-  AttrType value_type() const override { return child_->value_type(); }
+  AttrType value_type() const override { return child_ == nullptr ? AttrType::UNDEFINED : child_->value_type(); }
 
 private:
   string                 aggregate_name_;
   unique_ptr<Expression> child_;
+  int                    arg_count_ = 1;
 };
 
 class AggregateExpr : public Expression
@@ -528,3 +538,86 @@ private:
   Type                   aggregate_type_;
   unique_ptr<Expression> child_;
 };
+
+
+/**
+ * @brief 子查询表达式
+ * @details 保存解析后的子查询语法树。执行时使用当前事务执行子查询，并把结果返回给外层。
+ * 对于相关子查询，在执行时把外层字段替换为常量后再执行。
+ */
+class SubqueryExpr : public Expression
+{
+public:
+  explicit SubqueryExpr(shared_ptr<SelectSqlNode> subquery);
+  virtual ~SubqueryExpr();
+
+  ExprType type() const override { return ExprType::SUBQUERY; }
+  unique_ptr<Expression> copy() const override;
+  RC get_value(const Tuple &tuple, Value &value) const override;
+  AttrType value_type() const override { return AttrType::UNDEFINED; }
+
+  void set_db(Db *db) { db_ = db; }
+  void set_outer_tables(const vector<Table *> &tables) { outer_tables_ = tables; }
+
+  RC get_values(const Tuple &tuple, vector<Value> &values) const;
+  const shared_ptr<SelectSqlNode> &subquery() const { return subquery_; }
+
+private:
+  RC execute(const Tuple &tuple, vector<Value> &values) const;
+  RC prepare_select(const Tuple &tuple, shared_ptr<SelectSqlNode> &out) const;
+
+private:
+  shared_ptr<SelectSqlNode> subquery_;
+  Db                       *db_ = nullptr;
+  vector<Table *>            outer_tables_;
+};
+
+/**
+ * @brief IN / NOT IN 子查询表达式
+ */
+class InExpr : public Expression
+{
+public:
+  InExpr(unique_ptr<Expression> left, unique_ptr<SubqueryExpr> subquery, bool not_in);
+  virtual ~InExpr();
+
+  ExprType type() const override { return ExprType::IN; }
+  unique_ptr<Expression> copy() const override;
+  RC get_value(const Tuple &tuple, Value &value) const override;
+  AttrType value_type() const override { return AttrType::BOOLEANS; }
+
+  unique_ptr<Expression> &left() { return left_; }
+  unique_ptr<SubqueryExpr> &subquery() { return subquery_; }
+  bool not_in() const { return not_in_; }
+
+private:
+  unique_ptr<Expression> left_;
+  unique_ptr<SubqueryExpr> subquery_;
+  bool                     not_in_;
+};
+
+/**
+ * @brief IS NULL / IS NOT NULL 表达式
+ */
+class IsNullExpr : public Expression
+{
+public:
+  IsNullExpr(unique_ptr<Expression> child, bool is_not_null);
+  virtual ~IsNullExpr() = default;
+
+  ExprType type() const override { return ExprType::IS_NULL; }
+  unique_ptr<Expression> copy() const override;
+  RC get_value(const Tuple &tuple, Value &value) const override;
+  AttrType value_type() const override { return AttrType::BOOLEANS; }
+
+  unique_ptr<Expression> &child() { return child_; }
+  bool is_not_null() const { return is_not_null_; }
+
+private:
+  unique_ptr<Expression> child_;
+  bool                   is_not_null_;
+};
+
+void set_subquery_trx(Trx *trx);
+void set_subquery_binding_outer_tables(const vector<Table *> &tables);
+const vector<Table *> &subquery_binding_outer_tables();

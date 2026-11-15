@@ -21,6 +21,7 @@ See the Mulan PSL v2 for more details. */
 #include "common/lang/utility.h"
 
 class Expression;
+struct SelectSqlNode;
 
 /**
  * @defgroup SQLParser SQL Parser
@@ -64,15 +65,32 @@ enum CompOp
  */
 struct ConditionSqlNode
 {
-  int left_is_attr;              ///< TRUE if left-hand side is an attribute
-                                 ///< 1时，操作符左边是属性名，0时，是属性值
-  Value          left_value;     ///< left-hand side value if left_is_attr = FALSE
-  RelAttrSqlNode left_attr;      ///< left-hand side attribute
-  CompOp         comp;           ///< comparison operator
-  int            right_is_attr;  ///< TRUE if right-hand side is an attribute
-                                 ///< 1时，操作符右边是属性名，0时，是属性值
-  RelAttrSqlNode right_attr;     ///< right-hand side attribute if right_is_attr = TRUE 右边的属性
-  Value          right_value;    ///< right-hand side value if right_is_attr = FALSE
+  int left_is_attr = 0;              ///< TRUE if left-hand side is an attribute
+                                     ///< 1时，操作符左边是属性名，0时，是属性值
+  Value          left_value;         ///< left-hand side value if left_is_attr = FALSE
+  RelAttrSqlNode left_attr;          ///< left-hand side attribute
+  CompOp         comp = NO_OP;       ///< comparison operator
+  int            right_is_attr = 0;  ///< TRUE if right-hand side is an attribute
+                                     ///< 1时，操作符右边是属性名，0时，是属性值
+  RelAttrSqlNode right_attr;         ///< right-hand side attribute if right_is_attr = TRUE 右边的属性
+  Value          right_value;        ///< right-hand side value if right_is_attr = FALSE
+
+  /// 完整的表达式条件（支持算术表达式、常量、字段、子查询等）
+  Expression *left_expr  = nullptr;
+  Expression *right_expr = nullptr;
+
+  /// IN / NOT IN 子查询。subquery 为空表示不是 IN 条件
+  shared_ptr<SelectSqlNode> subquery;
+  bool                      not_in = false;
+
+  /// IS NULL / IS NOT NULL
+  bool is_null     = false;
+  bool is_not_null = false;
+
+  ConditionSqlNode() = default;
+  ConditionSqlNode(const ConditionSqlNode &other);
+  ConditionSqlNode &operator=(const ConditionSqlNode &other);
+  ~ConditionSqlNode();
 };
 
 /**
@@ -159,6 +177,7 @@ struct AttrInfoSqlNode
   AttrType type;    ///< Type of attribute
   string   name;    ///< Attribute name
   size_t   length;  ///< Length of attribute
+  bool     nullable = false;  ///< 是否允许 NULL
 };
 
 /**
@@ -204,8 +223,9 @@ struct CreateIndexSqlNode
 {
   string index_name;      ///< Index name
   string relation_name;   ///< Relation name
-  string attribute_name;  ///< Attribute name
-  bool   unique = false;  ///< 是否唯一索引
+  string         attribute_name;   ///< 索引第一个字段名称
+  vector<string> attribute_names;  ///< 索引包含的全部字段名称
+  bool           unique = false;   ///< 是否唯一索引
 };
 
 /**

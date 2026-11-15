@@ -59,10 +59,15 @@ public:
   const FilterObj &left() const { return left_; }
   const FilterObj &right() const { return right_; }
 
+  void                    set_expr(unique_ptr<Expression> expr) { expr_ = std::move(expr); }
+  unique_ptr<Expression> &expr() { return expr_; }
+  const unique_ptr<Expression> &expr() const { return expr_; }
+
 private:
-  CompOp    comp_ = NO_OP;
-  FilterObj left_;
-  FilterObj right_;
+  CompOp                 comp_ = NO_OP;
+  FilterObj              left_;
+  FilterObj              right_;
+  unique_ptr<Expression> expr_;
 };
 
 /**
