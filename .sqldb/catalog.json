@@ -1,0 +1,518 @@
+{
+  "schemas": [
+    "public"
+  ],
+  "tables": [
+    {
+      "key": "public.students",
+      "name": "Students",
+      "columns": [
+        {
+          "name": "Sno",
+          "type": {
+            "kind": "char",
+            "length": 11,
+            "precision": null,
+            "scale": null
+          },
+          "not_null": true,
+          "unique": false,
+          "default": null,
+          "check": null
+        },
+        {
+          "name": "Sname",
+          "type": {
+            "kind": "char",
+            "length": 20,
+            "precision": null,
+            "scale": null
+          },
+          "not_null": false,
+          "unique": false,
+          "default": null,
+          "check": null
+        },
+        {
+          "name": "Ssex",
+          "type": {
+            "kind": "char",
+            "length": 2,
+            "precision": null,
+            "scale": null
+          },
+          "not_null": false,
+          "unique": false,
+          "default": null,
+          "check": null
+        },
+        {
+          "name": "Sage",
+          "type": {
+            "kind": "int",
+            "length": null,
+            "precision": null,
+            "scale": null
+          },
+          "not_null": false,
+          "unique": false,
+          "default": null,
+          "check": null
+        },
+        {
+          "name": "Sdept",
+          "type": {
+            "kind": "char",
+            "length": 20,
+            "precision": null,
+            "scale": null
+          },
+          "not_null": false,
+          "unique": false,
+          "default": null,
+          "check": null
+        }
+      ],
+      "pk": [
+        "Sno"
+      ],
+      "uniques": [],
+      "fks": [],
+      "checks": []
+    },
+    {
+      "key": "public.courses",
+      "name": "Courses",
+      "columns": [
+        {
+          "name": "Cno",
+          "type": {
+            "kind": "char",
+            "length": 4,
+            "precision": null,
+            "scale": null
+          },
+          "not_null": true,
+          "unique": false,
+          "default": null,
+          "check": null
+        },
+        {
+          "name": "Cname",
+          "type": {
+            "kind": "char",
+            "length": 40,
+            "precision": null,
+            "scale": null
+          },
+          "not_null": false,
+          "unique": false,
+          "default": null,
+          "check": null
+        },
+        {
+          "name": "Cpno",
+          "type": {
+            "kind": "char",
+            "length": 4,
+            "precision": null,
+            "scale": null
+          },
+          "not_null": false,
+          "unique": false,
+          "default": null,
+          "check": null
+        },
+        {
+          "name": "Ccredit",
+          "type": {
+            "kind": "int",
+            "length": null,
+            "precision": null,
+            "scale": null
+          },
+          "not_null": false,
+          "unique": false,
+          "default": null,
+          "check": null
+        }
+      ],
+      "pk": [
+        "Cno"
+      ],
+      "uniques": [],
+      "fks": [
+        {
+          "name": null,
+          "cols": [
+            "Cpno"
+          ],
+          "ref_table": "Courses",
+          "ref_cols": [
+            "Cno"
+          ],
+          "on_delete": "set_null",
+          "on_update": "restrict"
+        }
+      ],
+      "checks": []
+    },
+    {
+      "key": "public.sc",
+      "name": "SC",
+      "columns": [
+        {
+          "name": "Sno",
+          "type": {
+            "kind": "char",
+            "length": 11,
+            "precision": null,
+            "scale": null
+          },
+          "not_null": true,
+          "unique": false,
+          "default": null,
+          "check": null
+        },
+        {
+          "name": "Cno",
+          "type": {
+            "kind": "char",
+            "length": 4,
+            "precision": null,
+            "scale": null
+          },
+          "not_null": true,
+          "unique": false,
+          "default": null,
+          "check": null
+        },
+        {
+          "name": "Grade",
+          "type": {
+            "kind": "int",
+            "length": null,
+            "precision": null,
+            "scale": null
+          },
+          "not_null": false,
+          "unique": false,
+          "default": null,
+          "check": null
+        }
+      ],
+      "pk": [
+        "Sno",
+        "Cno"
+      ],
+      "uniques": [],
+      "fks": [
+        {
+          "name": null,
+          "cols": [
+            "Sno"
+          ],
+          "ref_table": "Students",
+          "ref_cols": [
+            "Sno"
+          ],
+          "on_delete": "cascade",
+          "on_update": "cascade"
+        },
+        {
+          "name": null,
+          "cols": [
+            "Cno"
+          ],
+          "ref_table": "Courses",
+          "ref_cols": [
+            "Cno"
+          ],
+          "on_delete": "cascade",
+          "on_update": "cascade"
+        }
+      ],
+      "checks": []
+    },
+    {
+      "key": "public.sailors",
+      "name": "Sailors",
+      "columns": [
+        {
+          "name": "sid",
+          "type": {
+            "kind": "int",
+            "length": null,
+            "precision": null,
+            "scale": null
+          },
+          "not_null": true,
+          "unique": false,
+          "default": null,
+          "check": null
+        },
+        {
+          "name": "sname",
+          "type": {
+            "kind": "char",
+            "length": 20,
+            "precision": null,
+            "scale": null
+          },
+          "not_null": false,
+          "unique": false,
+          "default": null,
+          "check": null
+        },
+        {
+          "name": "rating",
+          "type": {
+            "kind": "int",
+            "length": null,
+            "precision": null,
+            "scale": null
+          },
+          "not_null": false,
+          "unique": false,
+          "default": null,
+          "check": null
+        },
+        {
+          "name": "age",
+          "type": {
+            "kind": "int",
+            "length": null,
+            "precision": null,
+            "scale": null
+          },
+          "not_null": false,
+          "unique": false,
+          "default": null,
+          "check": null
+        }
+      ],
+      "pk": [
+        "sid"
+      ],
+      "uniques": [],
+      "fks": [],
+      "checks": []
+    },
+    {
+      "key": "public.boats",
+      "name": "Boats",
+      "columns": [
+        {
+          "name": "bid",
+          "type": {
+            "kind": "int",
+            "length": null,
+            "precision": null,
+            "scale": null
+          },
+          "not_null": true,
+          "unique": false,
+          "default": null,
+          "check": null
+        },
+        {
+          "name": "bname",
+          "type": {
+            "kind": "char",
+            "length": 20,
+            "precision": null,
+            "scale": null
+          },
+          "not_null": false,
+          "unique": false,
+          "default": null,
+          "check": null
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "char",
+            "length": 10,
+            "precision": null,
+            "scale": null
+          },
+          "not_null": false,
+          "unique": false,
+          "default": null,
+          "check": null
+        }
+      ],
+      "pk": [
+        "bid"
+      ],
+      "uniques": [],
+      "fks": [],
+      "checks": []
+    },
+    {
+      "key": "public.reserves",
+      "name": "Reserves",
+      "columns": [
+        {
+          "name": "sid",
+          "type": {
+            "kind": "int",
+            "length": null,
+            "precision": null,
+            "scale": null
+          },
+          "not_null": true,
+          "unique": false,
+          "default": null,
+          "check": null
+        },
+        {
+          "name": "bid",
+          "type": {
+            "kind": "int",
+            "length": null,
+            "precision": null,
+            "scale": null
+          },
+          "not_null": true,
+          "unique": false,
+          "default": null,
+          "check": null
+        },
+        {
+          "name": "day",
+          "type": {
+            "kind": "date",
+            "length": null,
+            "precision": null,
+            "scale": null
+          },
+          "not_null": true,
+          "unique": false,
+          "default": null,
+          "check": null
+        }
+      ],
+      "pk": [
+        "sid",
+        "bid",
+        "day"
+      ],
+      "uniques": [],
+      "fks": [
+        {
+          "name": null,
+          "cols": [
+            "sid"
+          ],
+          "ref_table": "Sailors",
+          "ref_cols": [
+            "sid"
+          ],
+          "on_delete": "cascade",
+          "on_update": "restrict"
+        },
+        {
+          "name": null,
+          "cols": [
+            "bid"
+          ],
+          "ref_table": "Boats",
+          "ref_cols": [
+            "bid"
+          ],
+          "on_delete": "cascade",
+          "on_update": "restrict"
+        }
+      ],
+      "checks": []
+    }
+  ],
+  "views": [],
+  "indexes": [
+    {
+      "name": "__uniq_public__students_0",
+      "table": "public.students",
+      "cols": [
+        [
+          "Sno",
+          false
+        ]
+      ],
+      "unique": true,
+      "kind": "btree"
+    },
+    {
+      "name": "__uniq_public__courses_0",
+      "table": "public.courses",
+      "cols": [
+        [
+          "Cno",
+          false
+        ]
+      ],
+      "unique": true,
+      "kind": "btree"
+    },
+    {
+      "name": "__uniq_public__sc_0",
+      "table": "public.sc",
+      "cols": [
+        [
+          "Sno",
+          false
+        ],
+        [
+          "Cno",
+          false
+        ]
+      ],
+      "unique": true,
+      "kind": "btree"
+    },
+    {
+      "name": "__uniq_public__sailors_0",
+      "table": "public.sailors",
+      "cols": [
+        [
+          "sid",
+          false
+        ]
+      ],
+      "unique": true,
+      "kind": "btree"
+    },
+    {
+      "name": "__uniq_public__boats_0",
+      "table": "public.boats",
+      "cols": [
+        [
+          "bid",
+          false
+        ]
+      ],
+      "unique": true,
+      "kind": "btree"
+    },
+    {
+      "name": "__uniq_public__reserves_0",
+      "table": "public.reserves",
+      "cols": [
+        [
+          "sid",
+          false
+        ],
+        [
+          "bid",
+          false
+        ],
+        [
+          "day",
+          false
+        ]
+      ],
+      "unique": true,
+      "kind": "btree"
+    }
+  ]
+}

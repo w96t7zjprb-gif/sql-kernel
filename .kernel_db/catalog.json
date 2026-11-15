@@ -1,0 +1,245 @@
+{
+  "tables": [
+    {
+      "key": "students",
+      "name": "Students",
+      "columns": [
+        {
+          "name": "Sno",
+          "type": {
+            "kind": "char",
+            "length": 11,
+            "precision": null,
+            "scale": null
+          },
+          "not_null": false,
+          "unique": false,
+          "default": null,
+          "check": null
+        },
+        {
+          "name": "Sname",
+          "type": {
+            "kind": "char",
+            "length": 20,
+            "precision": null,
+            "scale": null
+          },
+          "not_null": false,
+          "unique": true,
+          "default": null,
+          "check": null
+        },
+        {
+          "name": "Ssex",
+          "type": {
+            "kind": "char",
+            "length": 2,
+            "precision": null,
+            "scale": null
+          },
+          "not_null": false,
+          "unique": false,
+          "default": null,
+          "check": null
+        },
+        {
+          "name": "Sage",
+          "type": {
+            "kind": "int",
+            "length": null,
+            "precision": null,
+            "scale": null
+          },
+          "not_null": false,
+          "unique": false,
+          "default": null,
+          "check": null
+        },
+        {
+          "name": "Sdept",
+          "type": {
+            "kind": "char",
+            "length": 20,
+            "precision": null,
+            "scale": null
+          },
+          "not_null": false,
+          "unique": false,
+          "default": null,
+          "check": null
+        }
+      ],
+      "pk": [
+        "Sno"
+      ],
+      "uniques": [],
+      "fks": [],
+      "checks": []
+    },
+    {
+      "key": "courses",
+      "name": "Courses",
+      "columns": [
+        {
+          "name": "Cno",
+          "type": {
+            "kind": "char",
+            "length": 4,
+            "precision": null,
+            "scale": null
+          },
+          "not_null": false,
+          "unique": false,
+          "default": null,
+          "check": null
+        },
+        {
+          "name": "Cname",
+          "type": {
+            "kind": "char",
+            "length": 40,
+            "precision": null,
+            "scale": null
+          },
+          "not_null": false,
+          "unique": false,
+          "default": null,
+          "check": null
+        },
+        {
+          "name": "Cpno",
+          "type": {
+            "kind": "char",
+            "length": 4,
+            "precision": null,
+            "scale": null
+          },
+          "not_null": false,
+          "unique": false,
+          "default": null,
+          "check": null
+        },
+        {
+          "name": "Ccredit",
+          "type": {
+            "kind": "int",
+            "length": null,
+            "precision": null,
+            "scale": null
+          },
+          "not_null": false,
+          "unique": false,
+          "default": null,
+          "check": null
+        }
+      ],
+      "pk": [
+        "Cno"
+      ],
+      "uniques": [],
+      "fks": [
+        {
+          "cols": [
+            "Cpno"
+          ],
+          "ref_table": "courses",
+          "ref_cols": [
+            "Cno"
+          ],
+          "on_delete": "set null",
+          "on_update": "restrict"
+        }
+      ],
+      "checks": []
+    },
+    {
+      "key": "sc",
+      "name": "SC",
+      "columns": [
+        {
+          "name": "Sno",
+          "type": {
+            "kind": "char",
+            "length": 11,
+            "precision": null,
+            "scale": null
+          },
+          "not_null": false,
+          "unique": false,
+          "default": null,
+          "check": null
+        },
+        {
+          "name": "Cno",
+          "type": {
+            "kind": "char",
+            "length": 4,
+            "precision": null,
+            "scale": null
+          },
+          "not_null": false,
+          "unique": false,
+          "default": null,
+          "check": null
+        },
+        {
+          "name": "Grade",
+          "type": {
+            "kind": "int",
+            "length": null,
+            "precision": null,
+            "scale": null
+          },
+          "not_null": false,
+          "unique": false,
+          "default": null,
+          "check": "((Grade >= 0) AND (Grade <= 100))"
+        }
+      ],
+      "pk": [
+        "Sno",
+        "Cno"
+      ],
+      "uniques": [],
+      "fks": [
+        {
+          "cols": [
+            "Sno"
+          ],
+          "ref_table": "students",
+          "ref_cols": [
+            "Sno"
+          ],
+          "on_delete": "cascade",
+          "on_update": "cascade"
+        },
+        {
+          "cols": [
+            "Cno"
+          ],
+          "ref_table": "courses",
+          "ref_cols": [
+            "Cno"
+          ],
+          "on_delete": "cascade",
+          "on_update": "cascade"
+        }
+      ],
+      "checks": []
+    }
+  ],
+  "indexes": [
+    {
+      "name": "idx_sc_grade",
+      "table": "sc",
+      "cols": [
+        [
+          "Grade",
+          false
+        ]
+      ],
+      "unique": false
+    }
+  ]
+}
