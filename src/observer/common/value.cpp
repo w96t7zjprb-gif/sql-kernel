@@ -21,6 +21,14 @@ See the Mulan PSL v2 for more details. */
 #include "common/log/log.h"
 #include "common/type/date_util.h"
 
+namespace {
+thread_local bool g_calc_legacy_division = false;
+}
+
+void Value::set_calc_legacy_division(bool enabled) { g_calc_legacy_division = enabled; }
+
+bool Value::calc_legacy_division() { return g_calc_legacy_division; }
+
 Value::Value(int val) { set_int(val); }
 
 Value::Value(float val) { set_float(val); }

@@ -16,6 +16,7 @@ See the Mulan PSL v2 for more details. */
 
 #include "sql/expr/expression_tuple.h"
 #include "sql/operator/physical_operator.h"
+#include "common/value.h"
 
 class CalcPhysicalOperator : public PhysicalOperator
 {
@@ -32,7 +33,11 @@ public:
   string name() const override { return "CALC"; }
   string param() const override { return ""; }
 
-  RC open(Trx *trx) override { return RC::SUCCESS; }
+  RC open(Trx *trx) override
+  {
+    Value::set_calc_legacy_division(true);
+    return RC::SUCCESS;
+  }
   RC next() override
   {
     RC rc = RC::SUCCESS;
@@ -52,7 +57,11 @@ public:
     }
     return RC::SUCCESS;
   }
-  RC close() override { return RC::SUCCESS; }
+  RC close() override
+  {
+    Value::set_calc_legacy_division(false);
+    return RC::SUCCESS;
+  }
 
   int cell_num() const { return tuple_.cell_num(); }
 

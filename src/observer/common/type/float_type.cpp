@@ -16,6 +16,7 @@ See the Mulan PSL v2 for more details. */
 #include "common/lang/limits.h"
 #include "common/value.h"
 #include "storage/common/column.h"
+#include <limits>
 
 int FloatType::compare(const Value &left, const Value &right) const
 {
@@ -53,7 +54,11 @@ RC FloatType::multiply(const Value &left, const Value &right, Value &result) con
 RC FloatType::divide(const Value &left, const Value &right, Value &result) const
 {
   if (right.get_float() > -EPSILON && right.get_float() < EPSILON) {
-    result.set_null(AttrType::FLOATS);
+    if (Value::calc_legacy_division()) {
+      result.set_float(std::numeric_limits<float>::max());
+    } else {
+      result.set_null(AttrType::FLOATS);
+    }
   } else {
     result.set_float(left.get_float() / right.get_float());
   }

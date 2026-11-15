@@ -65,6 +65,9 @@ public:
   }
   bool is_null() const { return is_null_; }
 
+  static void set_calc_legacy_division(bool enabled);
+  static bool calc_legacy_division();
+
   static RC add(const Value &left, const Value &right, Value &result)
   {
     return DataType::type_instance(result.attr_type())->add(left, right, result);
