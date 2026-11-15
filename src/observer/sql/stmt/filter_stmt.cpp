@@ -18,6 +18,7 @@ See the Mulan PSL v2 for more details. */
 #include "common/lang/string.h"
 #include "common/log/log.h"
 #include "common/sys/rc.h"
+#include "common/type/date_util.h"
 #include "storage/db/db.h"
 #include "storage/table/table.h"
 
@@ -80,6 +81,38 @@ RC get_table_and_field(Db *db, Table *default_table, unordered_map<string, Table
   return RC::SUCCESS;
 }
 
+/**
+ * @brief 校验日期字段比较中的字符串常量。
+ * @details date 字段在存储层使用 CHARS(10) 表示。比较时如果常量是非法日期
+ *          （例如 2017-2-29），不能按普通字符串比较返回空结果，而应让整条语句失败。
+ */
+static RC check_date_comparison_value(
+    Db *db, Table *default_table, unordered_map<string, Table *> *tables,
+    const RelAttrSqlNode &attr, const Value &value)
+{
+  Table           *table = nullptr;
+  const FieldMeta *field = nullptr;
+  RC rc = get_table_and_field(db, default_table, tables, attr, table, field);
+  if (OB_FAIL(rc)) {
+    return rc;
+  }
+  if (field->type() != AttrType::CHARS || field->len() != 10 || value.attr_type() != AttrType::CHARS) {
+    return RC::SUCCESS;
+  }
+
+  string input = value.get_string();
+  if (input.empty() || input.size() > 10 || input.find('-') == string::npos) {
+    return RC::SUCCESS;
+  }
+
+  string normalized;
+  if (!normalize_date_string(input, normalized)) {
+    LOG_WARN("invalid date value in comparison: %s", input.c_str());
+    return RC::INVALID_ARGUMENT;
+  }
+  return RC::SUCCESS;
+}
+
 RC FilterStmt::create_filter_unit(Db *db, Table *default_table, unordered_map<string, Table *> *tables,
     const ConditionSqlNode &condition, FilterUnit *&filter_unit)
 {
@@ -124,6 +157,32 @@ RC FilterStmt::create_filter_unit(Db *db, Table *default_table, unordered_map<st
   if (OB_FAIL(rc)) {
     LOG_WARN("failed to bind left operand of condition");
     return rc;
+  }
+
+  if (condition.subquery == nullptr && !condition.is_null && !condition.is_not_null) {
+    RC date_rc = RC::SUCCESS;
+    if (condition.left_expr != nullptr && condition.right_expr != nullptr) {
+      if (condition.left_expr->type() == ExprType::UNBOUND_FIELD && condition.right_expr->type() == ExprType::VALUE) {
+        const UnboundFieldExpr *field_expr = static_cast<const UnboundFieldExpr *>(condition.left_expr);
+        const ValueExpr        *value_expr = static_cast<const ValueExpr *>(condition.right_expr);
+        RelAttrSqlNode          attr;
+        attr.relation_name  = field_expr->table_name();
+        attr.attribute_name = field_expr->field_name();
+        date_rc = check_date_comparison_value(db, default_table, tables, attr, value_expr->get_value());
+      } else if (
+          condition.left_expr->type() == ExprType::VALUE && condition.right_expr->type() == ExprType::UNBOUND_FIELD) {
+        const ValueExpr        *value_expr = static_cast<const ValueExpr *>(condition.left_expr);
+        const UnboundFieldExpr *field_expr = static_cast<const UnboundFieldExpr *>(condition.right_expr);
+        RelAttrSqlNode          attr;
+        attr.relation_name  = field_expr->table_name();
+        attr.attribute_name = field_expr->field_name();
+        date_rc = check_date_comparison_value(db, default_table, tables, attr, value_expr->get_value());
+      }
+    }
+    if (OB_FAIL(date_rc)) {
+      LOG_WARN("invalid date literal in condition");
+      return date_rc;
+    }
   }
 
   unique_ptr<Expression> predicate;
