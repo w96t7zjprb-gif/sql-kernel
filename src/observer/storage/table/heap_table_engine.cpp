@@ -100,6 +100,33 @@ RC HeapTableEngine::update_record(const Record &old_record, const Record &new_re
 {
   const RID &rid = old_record.rid();
 
+  // 唯一索引：更新前检查新值是否已经存在于其它记录中
+  for (Index *index : indexes_) {
+    if (!index->unique()) {
+      continue;
+    }
+    const FieldMeta &field_meta = index->field_meta();
+    const char      *new_key    = new_record.data() + field_meta.offset();
+    const char      *old_key    = old_record.data() + field_meta.offset();
+    // 键值没有变化时不会产生新的冲突
+    if (0 == memcmp(new_key, old_key, field_meta.len())) {
+      continue;
+    }
+
+    IndexScanner *scanner = index->create_scanner(new_key, field_meta.len(), true, new_key, field_meta.len(), true);
+    if (scanner == nullptr) {
+      return RC::INTERNAL;
+    }
+    RID existing_rid;
+    RC  scan_rc = scanner->next_entry(&existing_rid);
+    scanner->destroy();
+    if (scan_rc == RC::SUCCESS) {
+      LOG_WARN("duplicate key for unique index. table=%s, index=%s",
+          table_meta_->name(), index->index_meta().name());
+      return RC::RECORD_DUPLICATE_KEY;
+    }
+  }
+
   RC rc = delete_entry_of_indexes(old_record.data(), rid, false);
   if (rc != RC::SUCCESS) {
     LOG_WARN("failed to delete old index entries. table=%s, rid=%s, rc=%s",
